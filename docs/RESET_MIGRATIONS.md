@@ -7,8 +7,8 @@ Sometimes the migration folder can get messed up, its really hard to fix some of
 > Warning: your data will be lost
 
 1. Delete the entire migrations folder.
-2. Delete de database `mysql -u root -e "DROP DATABASE example";`
-3. Create de database again `mysql -u root -e "CREATE DATABASE example";`
+2. Delete the database `mysql -u root -e "DROP DATABASE example";`
+3. Create the database again `mysql -u root -e "CREATE DATABASE example";`
 4. Initiallize the migrations again: `pipenv run init`
 5. Create the migration files again: `pipenv run migrate`
 6. Apply the migration files into your database `pipenv run upgrade`
