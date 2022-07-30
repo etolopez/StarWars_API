@@ -2,7 +2,9 @@
 This module takes care of starting the API Server, Loading the DB and Adding the endpoints
 """
 import os
-from flask import Flask, request, jsonify, url_for
+from hmac import compare_digest
+
+from flask import Flask, request, jsonify, url_for, request
 from flask_migrate import Migrate
 from flask_swagger import swagger
 from flask_cors import CORS
@@ -10,6 +12,14 @@ from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Planets, Character, Vehicles, FavoriteVehicles, FavoriteCharacter, FavoritePlanets, Favorites
 #from models import Person
+
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+from flask_sqlalchemy import SQLAlchemy
+
+from flask_bcrypt import Bcrypt
 
 app = Flask(__name__, template_folder='./templates')
 app.url_map.strict_slashes = False
@@ -20,6 +30,11 @@ db.init_app(app)
 CORS(app)
 setup_admin(app)
 
+app.config['JWT_SECRET_KEY'] = '4geeks' 
+jwt = JWTManager(app)
+bcrypt=Bcrypt(app)
+
+
 # Handle/serialize errors like a JSON object
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
@@ -29,6 +44,33 @@ def handle_invalid_usage(error):
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
+
+@app.route('/login', methods=['POST'])
+def login():
+    email = request.json.get('email', None)
+    password = request.json.get('password', None)
+
+    user = User.query.filter_by(email = email).first()
+    if user is None:
+        raise APIException("El usuario no existe", status_code=401)
+    if password is None:
+        raise APIException("Tienes que enviar la constrasena", status_code=404)
+
+    is_correct = bcrypt.check_password_hash(user.password, password)
+    if not is_correct:
+        return jsonify({"msg": "Bad username or password"}), 401
+
+    access_token= create_access_token(identity=email)
+    return jsonify(access_token=access_token), 200
+
+
+@app.route("/protected", methods=["GET"])
+@jwt_required()
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user), 200
+
 
 
 
@@ -66,7 +108,6 @@ def handle_hello(user_id):
 @app.route('/user', methods=['POST'])
 def post_new_user():
     body = request.get_json()
-    user = User.query.get(user_id)
 
     if body is None:
         raise APIException("You need to specify the request body as a json object", status_code=400)
@@ -77,18 +118,26 @@ def post_new_user():
     if 'password' not in body:
         raise APIException("Tienes que tener una contraseña. FUERTE.", status_code=404)
 
-    if user == None:
-        raise APIException("This User has not been created", status_code=400)
-
     if 'username' not in body:
         raise APIException("Please use a different username", status_code=400)
 
-    new_user = User(email=body['email'], password=body['password'], is_active=body['is_active'])
+    useremail = User.query.filter_by(email=body['email']).first()
+
+    if useremail != None:
+        raise APIException("El correo ya ha sido registrado anteriormente", status_code=400)
+
+    userUsername = User.query.filter_by(username=body['username']).first()
+
+    if userUsername !=None:
+        raise APIException("Este usuario ya ha sido registrado anteriormente", status_code=404)
+
+    pw_hash = bcrypt.generate_password_hash(body['password'])
+    new_user = User(email=body['email'], username=body['username'], password=pw_hash, is_active=True)
 
     db.session.add(new_user)
     db.session.commit()
     response_body = {
-        "msg": f"El usuario {new_user.serialize()['email']} ha sido creado."
+        "msg": f"El usuario {new_user.serialize()['username']} ha sido creado."
     }
 
     return jsonify(response_body), 200
@@ -395,33 +444,6 @@ def post_new_vehicle():
 
     return jsonify(response_body), 200
 
-@app.route("/users/favorites/vehicles", methods=['POST'])
-def post_favoritevehicles():
-    body = request.get_json()
-    
-    postUserId = User.query.get(body['user_id'])
-    if postUserId == None:
-        raise APIException("This vehicles does not exist...yet", status_code=404)
-
-    registerExist = FavoriteVehicles.query.filter_by(vehicles_id = body['vehicles_id']).filter_by(user_id = body['user_id']).all()
-
-    if len(registerExist) > 0:
-        raise APIException("This vehicles already has this favorite vehicles.", status_code=404)
-
-    postVehiclesId = Vehicles.query.get(body['vehicles_id'])
-    if postVehiclesId == None:
-        raise APIException("This vehicles is not on the list...yet", status_code=404)
-
-    postfavvehicles = FavoriteVehicles(vehicles_id = body['vehicles_id'], user_id = body['user_id'])
-    db.session.add(postfavvehicles)
-    db.session.commit()
-
-    response_body = {
-        "message": postfavvehicles.serialize()
-    }
-
-    return jsonify(response_body), 200
-
 
 @app.route("/vehicles/<int:vehicles_id>", methods=['PUT'])
 def update_vehicle(vehicles_id):
@@ -473,6 +495,7 @@ def delete_vehicles_id(vehicles_id):
 
 
 @app.route("/favoritecharacter", methods=['GET'])
+@jwt_required()
 def get_all_favcharacters():
     all_favchar = FavoriteCharacter.query.all()
     all_favchar_serialized = list(map(lambda x:x.serialize(), all_favchar))
@@ -560,6 +583,7 @@ def delete_favchar_id(favoritecharacter_id):
 
 
 @app.route("/favoritevehicles", methods=['GET'])
+@jwt_required()
 def get_all_favvehicles():
     all_favveh = FavoriteVehicles.query.all()
     all_favveh_serialized = list(map(lambda x:x.serialize(), all_favveh))
@@ -650,6 +674,7 @@ def delete_favvehicles_id(favoritevehicles_id):
 
 
 @app.route("/favoriteplanets", methods=['GET'])
+@jwt_required()
 def get_all_favplanets():
     all_favplan = FavoritePlanets.query.all()
     all_favplan_serialized = list(map(lambda x:x.serialize(), all_favplan))
@@ -733,6 +758,7 @@ def delete_favplanets_id(favoriteplanets_id):
 
 
 @app.route("/users/favorites", methods=['GET'])
+@jwt_required()
 def get_favorites():
     all_favorites = Favorites.query.all()
     all_favorites_serialized = list(map(lambda x:x.serialize(), all_favorites))
