@@ -507,6 +507,7 @@ def get_all_favcharacters():
     return jsonify(response_body), 200
 
 @app.route("/favoritecharacter/<int:favoritecharacter_id>", methods=['GET'])
+@jwt_required()
 def handle_favchar_id(favoritecharacter_id):
 
     if favoritecharacter_id < 1:
@@ -596,6 +597,7 @@ def get_all_favvehicles():
 
 
 @app.route("/favoritevehicles/<int:favoritevehicles_id>", methods=['GET'])
+@jwt_required()
 def handle_favvehicles_id(favoritevehicles_id):
 
     if favoritevehicles_id < 1:
@@ -686,6 +688,7 @@ def get_all_favplanets():
     return jsonify(response_body), 200
 
 @app.route("/favoriteplanets/<int:favoriteplanets_id>", methods=['GET'])
+@jwt_required()
 def handle_favplanets_id(favoriteplanets_id):
     if favoriteplanets_id <1:
         raise APIException("This planet doesn't not exist on your favorites.", status_code = 404)
