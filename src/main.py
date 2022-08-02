@@ -72,9 +72,6 @@ def protected():
     return jsonify(logged_in_as=current_user), 200
 
 
-
-
-
 ##----------------------------------USER CRUD-------------------------------------------------
 
 
